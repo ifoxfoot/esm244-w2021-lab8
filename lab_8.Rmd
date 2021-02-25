@@ -1,0 +1,167 @@
+---
+title: "lab_8_clustering"
+author: "Iris Foxfoot"
+date: "2/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(janitor)
+library(palmerpenguins)
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+```
+
+# Part 1. K-means clustering:
+
+## Exploratory data viz
+```{r}
+ggplot(penguins) +
+  geom_point(aes(x = bill_length_mm,
+                 y = bill_depth_mm,
+                 color = species,
+                 shape = sex),
+             size = 3,
+             alpha = 0.7) +
+  scale_color_manual(values = c("orange", "cyan4", "darkmagenta"))
+```
+
+```{r}
+ggplot(penguins) +
+  geom_point(aes(x = flipper_length_mm,
+                 y = body_mass_g,
+                 color = species,
+                 shape = sex),
+             size = 3,
+             alpha = 0.7) +
+  scale_color_manual(values = c("orange", "cyan4", "darkmagenta"))
+```
+
+```{r}
+#deciding how many clusters we should evaluate
+number_est <- NbClust(penguins[3:6], min.nc = 2, max.nc = 10, method = "kmeans")
+```
+
+```{r}
+#get results
+number_est
+
+#according to this, we should use two groups. However, we know that there are three species, so we're gonna use three groups
+```
+
+```{r}
+#drop rows where any of the four size measurements are missing
+penguins_complete <- penguins %>% 
+  drop_na(bill_length_mm, bill_depth_mm, body_mass_g, flipper_length_mm)
+
+#only keep columns for the four size measurements, then scale them
+penguins_scale <- penguins_complete %>% 
+  select(ends_with("mm"), body_mass_g) %>% 
+  scale()
+```
+
+```{r}
+#run kmeans
+penguins_km <- kmeans(penguins_scale, 3)
+
+#check outputs
+penguins_km$size
+
+#see cluster
+penguins_km$cluster
+```
+
+```{r}
+#bind the cluster numbers to the original data, so we can see which cluster each penguin is assigned to
+penguins_cl <- data.frame(penguins_complete, cluster_no = factor(penguins_km$cluster))
+
+#plot findings
+ggplot(penguins_cl) +
+  geom_point(aes(x = flipper_length_mm, 
+                 y = body_mass_g, 
+                 color = cluster_no,
+                 shape = species))
+
+
+ggplot(penguins_cl) +
+  geom_point(aes(x = bill_depth_mm, 
+                 y = bill_length_mm, 
+                 color = cluster_no,
+                 shape = species))
+
+```
+
+```{r}
+#find counts of penguins in clusters
+penguins_cl %>% 
+  count(species, cluster_no) %>% 
+  pivot_wider(names_from = cluster_no, values_from = n) %>% 
+  rename('Cluster 1' = '1', 'Cluster 2' = '2', 'Cluster 3' = '3')
+```
+
+### part 2, cluster analysis: hierarchical
+```{r}
+wb_env <- read_csv("wb_env.csv")
+```
+
+```{r}
+#ceep only top 20 ghg emitters
+wb_ghg_20 <- wb_env %>% 
+  arrange(-ghg) %>% 
+  head(20)
+```
+
+```{r}
+#scale numeric variables
+wb_scaled <- wb_ghg_20 %>% 
+  select(3:7) %>% 
+  scale()
+
+#update to add rownames (country name) from wb_ghg_20
+rownames(wb_scaled) <- wb_ghg_20$name
+```
+
+```{r}
+#find euclidean distances using stats::dist()
+euc_distance <- dist(wb_scaled, method = "euclidean")
+```
+
+```{r}
+#preform hierarchical clustering by complete linkage with stats::hclust()
+hc_complete <- hclust(euc_distance, method = "complete")
+
+#plot it (base plot):
+plot(hc_complete, cex = 0.6, hang = -1)
+```
+
+```{r}
+# now lets try by single linkage and compare
+hc_single <- hclust(euc_distance, method = "single")
+
+#plot it (base plot):
+plot(hc_single, cex = 0.6, hang = -1)
+```
+
+```{r}
+#make a tanglegram to compare clusters
+dend_complete <- as.dendrogram(hc_complete)
+dend_simple <- as.dendrogram(hc_single)
+
+#make a tanglegram
+tanglegram(dend_complete, dend_simple)
+```
+
+```{r}
+#dendrogram in ggplot
+ggdendrogram(hc_complete,
+             rotate = TRUE) +
+  theme_minimal() +
+  labs(x = "Country")
+```
+
